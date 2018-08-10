@@ -1,0 +1,121 @@
+---
+title: "Untitled"
+author: "Zachary M. Smith"
+date: "April 27, 2018"
+output: html_document
+---
+
+
+```{r}
+import_ecoregion_spdf <- function(main.dir, file.names, eco.code.col, ecoregion.vec) {
+  #eco.code.col <- rlang::enquo(eco.code.col)
+  
+  purrr::map(file.names, function(file.i) {
+    raw.spdf <-readOGR(file.path(main.dir, file.i),
+            verbose = FALSE) %>% 
+    #raw.spdf[raw.spdf@data[eco.code.col] %in% ecoregion.vec, ]
+      subset(.@data[, eco.code.col] %in% ecoregion.vec)
+  }) %>% 
+    do.call(rbind, .)
+}
+
+```
+
+```{r}
+# eco3.file.names <- c("Region2/reg2_eco_l3/reg2_eco_l3.shp",
+#                 "Region3/reg3_eco_l3/reg3_eco_l3.shp",
+#                 )
+# test3 <- import_ecoregion_spdf(main.dir = main.dir,
+#                       file.names = file.names,
+#                       eco.code.col = "US_L3CODE",
+#                       ecoregion.vec = ecoregion.vec)
+# plot(test3)
+```
+
+```{r}
+ecoregion.vec <- c("63", "65", "84")
+projection.string <- "+proj=longlat +datum=NAD83 +no_defs +ellps=GRS80 +towgs84=0,0,0"
+```
+
+```{r}
+state.spdf <- map_data('state') %>% 
+  clean_up() %>%  
+  filter(region %in% c(#"new_york",
+                       "new_jersey",
+                       #"pennsylvania",
+                       "delaware",
+                       "maryland",
+                       "virginia",
+                       "north_carolina",
+                       "south_carolina"
+                       )) %>% 
+  unite(gregion, region, subregion, remove = FALSE) %>% 
+  prep_spdf(gregion)
+```
+
+```{r}
+main.dir <- "H:/GIS3/GIS5/GIS_Data/Land_Classification/Ecoregion/EPA"
+eco3.spdf <- readOGR(file.path(main.dir, "Eco_Level_III_US_nostate/us_eco_l3_nostate.shp"),
+                     verbose = FALSE) %>% 
+  subset(US_L3CODE %in% ecoregion.vec) %>% 
+  spTransform(CRS(projection.string)) %>% 
+  raster::intersect(state.spdf)
+
+eco3.spdf@data <- eco3.spdf@data %>% 
+  mutate_if(is.factor, as.character) %>% 
+  clean_up()
+# eco4.spdf <- readOGR(file.path(main.dir, "Eco_Level_III_US_nostate/us_eco_l3_nostate.shp"),
+#                      verbose = FALSE) %>% 
+#   subset(US_L3CODE %in% ecoregion.vec)
+```
+
+
+```{r}
+test <- prep_poly(eco3.spdf, "us_l3code")
+
+ecoregion.spdf <- suppressMessages(fortify(test)) %>% 
+  mutate(label = case_when(
+    id == "63" ~ "Middle Atlantic Coastal Plain (63)",
+    id == "65" ~ "Southeastern Plains (65)",
+    id == "84" ~ "Atlantic Coastal Pine Barrens (84)",
+    TRUE ~ "ERROR"
+  ),
+  label = factor(label, levels = c(
+    "Middle Atlantic Coastal Plain (63)",
+    "Southeastern Plains (65)",
+    "Atlantic Coastal Pine Barrens (84)"
+  ))
+  )
+```
+
+```{r}
+coastal.map <- ggplot() +
+  geom_polygon(data = suppressMessages(fortify(state.spdf)),
+               aes(long, lat, group = group),
+               color = "black", fill = "white", linetype = "dashed") +
+  geom_polygon(data = ecoregion.spdf,
+               aes(long, lat, group = group, fill = label),
+               color = "black") +
+  scale_fill_brewer(palette = "Blues",
+               guide_legend(title = "Level III Ecoregion")) +
+  # scale_fill_manual(values = viridis::viridis_pal(option = "D")(3)) +
+  coord_equal() +
+  theme_void() 
+  
+
+coastal.map 
+
+
+```
+
+```{r}
+ggsave(filename = "coastal_map_no_legend.png",
+       path = "D:/ZSmith/Projects/ma_coastal_mmi/ma_coastal_mmi/data/output/maps",
+       plot = coastal.map + theme(legend.position="none"))
+
+ggsave(filename = "coastal_map_with_legend.png",
+       path = "D:/ZSmith/Projects/ma_coastal_mmi/ma_coastal_mmi/data/output/maps",
+       plot = coastal.map)
+
+```
+
